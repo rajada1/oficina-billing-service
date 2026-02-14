@@ -1,0 +1,26 @@
+spring:
+  application:
+    name: billing-service
+
+security:
+  disabled: true
+
+jwt:
+  secret: base64EncodedSecretKeyWithMinimumOf256BitsForHS256SigningAlgorithm
+  expiration:
+    ms: 3600000
+
+server:
+  port: 8082
+
+# DynamoDB (DynamoDB Local para testes)
+aws:
+  region: us-east-1
+  dynamodb:
+    endpoint: http://localhost:8000
+    table-prefix: test-
+
+logging:
+  level:
+    root: WARN
+    br.com.grupo99.billingservice: INFO

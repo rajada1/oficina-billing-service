@@ -1,0 +1,156 @@
+version: '3.8'
+
+services:
+  # DynamoDB Local (substitui MongoDB)
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    container_name: billing-dynamodb-local
+    ports:
+      - "8000:8000"
+    command: "-jar DynamoDBLocal.jar -sharedDb -inMemory"
+    networks:
+      - billing-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:8000 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Zookeeper (required for Kafka)
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: billing-zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - billing-network
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Kafka
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: billing-kafka
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_RETENTION_MS: 2592000000
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    networks:
+      - billing-network
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  # Kafka UI (optional - for debugging)
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: billing-kafka-ui
+    ports:
+      - "8180:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: billing-cluster
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    depends_on:
+      - kafka
+    networks:
+      - billing-network
+
+  # Kafka Init - Create Topics
+  kafka-init:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: billing-kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      "
+      echo 'Waiting for Kafka to be ready...'
+      sleep 10
+      
+      echo 'Creating topics...'
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic os-events --partitions 6 --replication-factor 1 --config retention.ms=2592000000
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic billing-events --partitions 3 --replication-factor 1 --config retention.ms=2592000000
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic execution-events --partitions 3 --replication-factor 1 --config retention.ms=2592000000
+      
+      echo 'Topics created:'
+      kafka-topics --bootstrap-server kafka:29092 --list
+      "
+    networks:
+      - billing-network
+
+  # LocalStack (AWS SQS local) - deprecated, mantido para compatibilidade
+  localstack:
+    image: localstack/localstack:latest
+    container_name: billing-localstack
+    ports:
+      - "4566:4566"
+    environment:
+      SERVICES: sqs
+      DEBUG: 1
+      DATA_DIR: /tmp/localstack/data
+      DOCKER_HOST: unix:///var/run/docker.sock
+    volumes:
+      - localstack_data:/tmp/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - billing-network
+    profiles:
+      - sqs-legacy
+
+  # Billing Service
+  billing-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: billing-service
+    ports:
+      - "8082:8082"
+    environment:
+      AWS_DYNAMODB_ENDPOINT: http://dynamodb-local:8000
+      AWS_REGION: us-east-1
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_PROFILES_ACTIVE: local
+      LOG_LEVEL: DEBUG
+    depends_on:
+      dynamodb-local:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - billing-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8082/api/v1/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  localstack_data:
+
+networks:
+  billing-network:
+    driver: bridge

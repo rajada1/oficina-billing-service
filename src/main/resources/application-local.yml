@@ -1,0 +1,64 @@
+# =============================================================================
+# Configuração LocalStack - oficina-billing-service
+# Profile: local
+# Uso: mvn spring-boot:run -Dspring-boot.run.profiles=local
+# =============================================================================
+
+spring:
+  application:
+    name: billing-service
+
+  cloud:
+    aws:
+      endpoint: http://localhost:4566
+      region:
+        static: us-east-1
+      credentials:
+        access-key: test
+        secret-key: test
+      sqs:
+        endpoint: http://localhost:4566
+
+# JWT Configuration
+jwt:
+  secret: base64EncodedSecretKeyWithMinimumOf256BitsForHS256SigningAlgorithm
+  expiration:
+    ms: 3600000
+
+# Security (disabled for local testing)
+security:
+  disabled: true
+
+server:
+  port: 8086
+  servlet:
+    context-path: /api/v1
+
+# Logging (mais detalhado para debug)
+logging:
+  level:
+    root: INFO
+    br.com.grupo99: DEBUG
+    software.amazon.awssdk: DEBUG
+    io.awspring.cloud: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %logger{36} - %msg%n"
+
+# AWS DynamoDB (LocalStack)
+aws:
+  region: us-east-1
+  dynamodb:
+    endpoint: http://localhost:4566
+    table-prefix:
+  endpoint: http://localhost:4566
+  sqs:
+    queues:
+      os-events: http://localhost:4566/000000000000/os-events-queue
+      billing-events: http://localhost:4566/000000000000/billing-events-queue
+      payment-events: http://localhost:4566/000000000000/payment-events-queue
+
+# Aplicação
+app:
+  orcamento:
+    prazo-aprovacao-dias: 7
+    valor-minimo: 0

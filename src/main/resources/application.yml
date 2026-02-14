@@ -1,0 +1,139 @@
+spring:
+  application:
+    name: billing-service
+
+  # DynamoDB - não utiliza spring.data.* (configurado via DynamoDbConfig.java)
+
+  # Kafka Configuration
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: billing-service-group
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+        spring.json.use.type.headers: false
+        spring.json.value.default.type: java.util.Map
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 3
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+    listener:
+      ack-mode: manual
+      concurrency: 3
+
+  # AWS SQS (deprecated - mantido para compatibilidade)
+  cloud:
+    aws:
+      region:
+        static: ${AWS_REGION:us-east-1}
+      credentials:
+        access-key: ${AWS_ACCESS_KEY_ID:test}
+        secret-key: ${AWS_SECRET_ACCESS_KEY:test}
+      sqs:
+        endpoint: ${AWS_SQS_ENDPOINT:http://localhost:4566}
+
+# JWT Configuration
+jwt:
+  secret: ${JWT_SECRET:base64EncodedSecretKeyWithMinimumOf256BitsForHS256SigningAlgorithm}
+  expiration:
+    ms: ${JWT_EXPIRATION_MS:3600000}
+
+server:
+  port: ${SERVER_PORT:8082}
+  servlet:
+    context-path: /api/v1
+
+logging:
+  level:
+    root: ${LOG_LEVEL:INFO}
+    br.com.grupo99: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %logger{36} - %msg%n"
+
+# Resilience4j Circuit Breaker Configuration
+resilience4j:
+  circuitbreaker:
+    instances:
+      kafkaPublisher:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        waitDurationInOpenState: 30s
+        failureRateThreshold: 50
+        slowCallRateThreshold: 80
+        slowCallDurationThreshold: 5s
+        eventConsumerBufferSize: 10
+  retry:
+    instances:
+      kafkaPublisher:
+        maxAttempts: 3
+        waitDuration: 1s
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2
+        retryExceptions:
+          - org.apache.kafka.common.errors.TimeoutException
+          - org.apache.kafka.common.errors.RetriableException
+        ignoreExceptions:
+          - org.apache.kafka.common.errors.SerializationException
+  timelimiter:
+    instances:
+      kafkaPublisher:
+        timeoutDuration: 10s
+        cancelRunningFuture: true
+
+# Swagger/OpenAPI
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method
+
+# New Relic
+newrelic:
+  config:
+    license_key: ${NEW_RELIC_LICENSE_KEY:}
+    app_name: ${NEW_RELIC_APP_NAME:billing-service}
+    distributed_tracing:
+      enabled: true
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      application: billing-service
+
+# AWS DynamoDB + SQS
+aws:
+  region: ${AWS_REGION:us-east-1}
+  dynamodb:
+    endpoint: ${AWS_DYNAMODB_ENDPOINT:}
+    table-prefix: ${DYNAMODB_TABLE_PREFIX:}
+  sqs:
+    queues:
+      os-events: ${OS_EVENTS_QUEUE_URL:os-events-queue}
+      billing-events: ${BILLING_EVENTS_QUEUE_URL:billing-events-queue}
+
+# Aplicação
+app:
+  orcamento:
+    prazo-aprovacao-dias: 7
+    valor-minimo: 0
+    valor-maximo: 100000

@@ -1,0 +1,137 @@
+name: Undeploy Billing Service
+
+on:
+    workflow_dispatch:
+        inputs:
+            confirmation:
+                description: 'Digite "DESTROY" para confirmar a remoção da aplicação'
+                required: true
+                default: ""
+            environment:
+                description: "Environment to undeploy"
+                required: true
+                default: "dev"
+                type: choice
+                options:
+                    - dev
+
+env:
+    AWS_REGION: us-east-1
+    ECR_REPOSITORY: billing-service
+    EKS_CLUSTER_NAME: tech-challenge-cluster
+    SERVICE_NAME: "billing-service"
+
+jobs:
+    undeploy:
+        name: Remove Billing Service from EKS
+        runs-on: ubuntu-latest
+        if: github.event.inputs.confirmation == 'DESTROY'
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Configure AWS Credentials
+              uses: aws-actions/configure-aws-credentials@v4
+              with:
+                  aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+                  aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+                  aws-region: ${{ env.AWS_REGION }}
+
+            - name: Retrieve EKS Cluster Name from SSM
+              id: ssm
+              run: |
+                  ENVIRONMENT=${{ github.event.inputs.environment || 'dev' }}
+          EKS_CLUSTER_NAME=$(aws ssm get-parameter --name "/oficina/$ENVIRONMENT/eks/cluster_name" --query "Parameter.Value" --output text --region ${{ env.AWS_REGION }} 2>/dev/null || echo "${{ env.EKS_CLUSTER_NAME }}")
+              run: |
+                  aws eks update-kubeconfig \
+                    --region ${{ env.AWS_REGION }} \
+                    --name ${{ env.EKS_CLUSTER_NAME }}
+
+            - name: Checkout K8s Infra Repository
+              uses: actions/checkout@v4
+              with:
+                  repository: rajada1/tech_challenge_k8s_infra
+                  token: ${{ secrets.GITHUB_TOKEN }}
+                  path: k8s-infra
+
+            - name: Delete Kubernetes Resources
+              run: |
+                  NAMESPACE="${{ env.SERVICE_NAME }}"
+
+                  echo "=========================================="
+                  echo "Undeploying Billing Service from namespace: $NAMESPACE"
+                  echo "=========================================="
+
+                  cd k8s-infra/microservices/billing-service
+
+                  echo "Deleting Service (LoadBalancer)..."
+                  kubectl delete -f service.yaml -n $NAMESPACE --ignore-not-found=true
+
+                  echo "Waiting for LoadBalancer to be fully deleted..."
+                  kubectl wait --for=delete service/billing-service -n $NAMESPACE --timeout=300s || echo "Service already deleted or timeout reached"
+
+                  echo "Deleting HPA..."
+                  kubectl delete -f hpa.yaml -n $NAMESPACE --ignore-not-found=true
+
+                  echo "Deleting Ingress..."
+                  kubectl delete -f ingress.yaml -n $NAMESPACE --ignore-not-found=true
+
+                  echo "Deleting Deployment..."
+                  kubectl delete -f deployment.yaml -n $NAMESPACE --ignore-not-found=true
+
+                  echo "Deleting ConfigMap..."
+                  kubectl delete -f configmap.yaml -n $NAMESPACE --ignore-not-found=true
+
+                  echo "Deleting Secrets..."
+                  kubectl delete secret billing-service-secrets -n $NAMESPACE --ignore-not-found=true
+
+                  echo "Deleting Namespace..."
+                  kubectl delete -f namespace.yaml --ignore-not-found=true
+
+                  echo "✅ Kubernetes resources deleted successfully"
+
+            - name: Verify Load Balancer Cleanup
+              run: |
+                  echo "Verifying Load Balancer cleanup..."
+
+                  LBS=$(aws elbv2 describe-load-balancers \
+                    --query "LoadBalancers[?contains(LoadBalancerName, 'billing-service')].LoadBalancerArn" \
+                    --output text \
+                    --region ${{ env.AWS_REGION }}) || true
+
+                  if [ ! -z "$LBS" ]; then
+                    echo "⚠️  Found remaining Load Balancers:"
+                    for lb in $LBS; do
+                      LB_NAME=$(aws elbv2 describe-load-balancers --load-balancer-arns $lb --query "LoadBalancers[0].LoadBalancerName" --output text --region ${{ env.AWS_REGION }})
+                      echo "  - $LB_NAME"
+                    done
+                    echo "These will be cleaned up by Kubernetes or may need manual deletion"
+                  else
+                    echo "✅ All Load Balancers cleaned up successfully"
+                  fi
+
+            - name: Clean ECR Repository (Optional)
+              run: |
+                  echo "Checking ECR Repository..."
+
+                  # Check if repository exists
+                  REPO_EXISTS=$(aws ecr describe-repositories \
+                    --repository-names ${{ env.ECR_REPOSITORY }} \
+                    --region ${{ env.AWS_REGION }} 2>/dev/null || echo "not-found")
+
+                  if [ "$REPO_EXISTS" != "not-found" ]; then
+                    echo "⚠️  ECR Repository '${{ env.ECR_REPOSITORY }}' still exists"
+                    echo "To delete it including all images, run:"
+                    echo "  aws ecr delete-repository --repository-name ${{ env.ECR_REPOSITORY }} --force --region ${{ env.AWS_REGION }}"
+                    echo ""
+                    echo "Uncomment the line below to auto-delete:"
+                    # aws ecr delete-repository --repository-name ${{ env.ECR_REPOSITORY }} --force --region ${{ env.AWS_REGION }}
+                  else
+                    echo "✅ ECR Repository not found or already deleted"
+                  fi
+
+                  echo ""
+                  echo "=========================================="
+                  echo "✅ Billing Service undeploy completed"
+                  echo "=========================================="
