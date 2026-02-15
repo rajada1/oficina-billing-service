@@ -116,7 +116,7 @@ management:
     tags:
       application: billing-service
 
-# AWS DynamoDB + SQS
+# AWS DynamoDB
 aws:
   region: ${AWS_REGION:us-east-1}
   dynamodb:
