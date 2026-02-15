@@ -29,7 +29,6 @@ spring:
       ack-mode: manual
       concurrency: 3
 
-  # AWS SQS (deprecated - mantido para compatibilidade)
   cloud:
     aws:
       region:
@@ -37,9 +36,6 @@ spring:
       credentials:
         access-key: ${AWS_ACCESS_KEY_ID:test}
         secret-key: ${AWS_SECRET_ACCESS_KEY:test}
-      sqs:
-        endpoint: ${AWS_SQS_ENDPOINT:http://localhost:4566}
-
 # JWT Configuration
 jwt:
   secret: ${JWT_SECRET:base64EncodedSecretKeyWithMinimumOf256BitsForHS256SigningAlgorithm}
@@ -126,11 +122,6 @@ aws:
   dynamodb:
     endpoint: ${AWS_DYNAMODB_ENDPOINT:}
     table-prefix: ${DYNAMODB_TABLE_PREFIX:}
-  sqs:
-    queues:
-      os-events: ${OS_EVENTS_QUEUE_URL:os-events-queue}
-      billing-events: ${BILLING_EVENTS_QUEUE_URL:billing-events-queue}
-
 # Aplicação
 app:
   orcamento:
