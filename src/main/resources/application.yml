@@ -38,14 +38,12 @@ spring:
         secret-key: ${AWS_SECRET_ACCESS_KEY:test}
 # JWT Configuration
 jwt:
-  secret: ${JWT_SECRET:base64EncodedSecretKeyWithMinimumOf256BitsForHS256SigningAlgorithm}
+  secret: ${JWT_SECRET:YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY3ODkwYWJjZGVmZw==}
   expiration:
     ms: ${JWT_EXPIRATION_MS:3600000}
 
 server:
   port: ${SERVER_PORT:8082}
-  servlet:
-    context-path: /api/v1
 
 logging:
   level:
@@ -128,3 +126,8 @@ app:
     prazo-aprovacao-dias: 7
     valor-minimo: 0
     valor-maximo: 100000
+
+# Mercado Pago
+mercadopago:
+  access-token: ${MERCADOPAGO_ACCESS_TOKEN:}
+  notification-url: ${MERCADOPAGO_NOTIFICATION_URL:}

@@ -66,6 +66,21 @@ public interface PagamentoRepository {
     boolean existsByOrcamentoIdAndStatus(UUID orcamentoId, StatusPagamento status);
 
     /**
+     * Busca pagamento pelo ID do Mercado Pago.
+     *
+     * @param mercadoPagoPaymentId ID do pagamento no Mercado Pago
+     * @return Optional contendo o pagamento, se encontrado
+     */
+    Optional<Pagamento> findByMercadoPagoPaymentId(Long mercadoPagoPaymentId);
+
+    /**
+     * Lista todos os pagamentos.
+     *
+     * @return lista de todos os pagamentos
+     */
+    List<Pagamento> findAll();
+
+    /**
      * Deleta um pagamento.
      *
      * @param id ID do pagamento a ser deletado

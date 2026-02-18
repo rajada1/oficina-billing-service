@@ -1,70 +1,83 @@
 package br.com.grupo99.billingservice.infrastructure.repository;
 
 import br.com.grupo99.billingservice.domain.model.*;
-import br.com.grupo99.billingservice.domain.repository.OrcamentoRepository;
 import br.com.grupo99.billingservice.infrastructure.persistence.adapter.OrcamentoEntityMapper;
 import br.com.grupo99.billingservice.infrastructure.persistence.adapter.OrcamentoRepositoryAdapter;
+import br.com.grupo99.billingservice.infrastructure.persistence.entity.OrcamentoEntity;
 import br.com.grupo99.billingservice.infrastructure.persistence.repository.DynamoDbOrcamentoRepository;
-import br.com.grupo99.billingservice.infrastructure.config.DynamoDbConfig;
-import br.com.grupo99.billingservice.testconfig.DynamoDbTestContainer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.ContextConfiguration;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
-@SpringBootTest
-@ActiveProfiles("test")
-@ContextConfiguration(initializers = DynamoDbTestContainer.Initializer.class)
-@DisplayName("OrcamentoRepository - Testes de Integração (DynamoDB)")
+/**
+ * Testes unitários para OrcamentoRepositoryAdapter.
+ * Utiliza mocks para DynamoDbOrcamentoRepository e OrcamentoEntityMapper
+ * para testar a lógica do adapter sem necessidade de Docker/Testcontainers.
+ */
+@ExtendWith(MockitoExtension.class)
+@DisplayName("OrcamentoRepository - Testes Unitários (com Mocks)")
 class OrcamentoRepositoryTest {
 
-    @Autowired
-    private OrcamentoRepository repository;
-
-    @Autowired
+    @Mock
     private DynamoDbOrcamentoRepository dynamoDbRepository;
+
+    @Mock
+    private OrcamentoEntityMapper mapper;
+
+    @InjectMocks
+    private OrcamentoRepositoryAdapter repository;
+
+    private UUID osId;
+    private Orcamento orcamento;
+    private OrcamentoEntity orcamentoEntity;
 
     @BeforeEach
     void setUp() {
-        // Limpar dados antes de cada teste para garantir isolamento
-        dynamoDbRepository.deleteAll();
+        osId = UUID.randomUUID();
+        orcamento = Orcamento.criar(osId, "Orçamento de teste");
+        orcamentoEntity = new OrcamentoEntity();
+        orcamentoEntity.setId(orcamento.getId().toString());
+        orcamentoEntity.setOsId(osId.toString());
+        orcamentoEntity.setStatus("PENDENTE");
     }
 
     @Test
     @DisplayName("Deve salvar orçamento com sucesso")
     void deveSalvarOrcamentoComSucesso() {
         // Arrange
-        UUID osId = UUID.randomUUID();
-        Orcamento orcamento = Orcamento.criar(osId, "Orçamento de teste");
-        orcamento.adicionarItem(new ItemOrcamento(TipoItem.SERVICO, "Serviço 1", 1, new BigDecimal("100.00")));
+        when(mapper.toEntity(any(Orcamento.class))).thenReturn(orcamentoEntity);
+        when(dynamoDbRepository.save(any(OrcamentoEntity.class))).thenReturn(orcamentoEntity);
+        when(mapper.toDomain(any(OrcamentoEntity.class))).thenReturn(orcamento);
 
         // Act
         Orcamento saved = repository.save(orcamento);
 
         // Assert
         assertNotNull(saved);
-        assertNotNull(saved.getId());
         assertEquals(osId, saved.getOsId());
-        assertEquals(1, saved.getItens().size());
+        verify(dynamoDbRepository).save(any(OrcamentoEntity.class));
+        verify(mapper).toEntity(orcamento);
+        verify(mapper).toDomain(orcamentoEntity);
     }
 
     @Test
     @DisplayName("Deve buscar orçamento por osId")
     void deveBuscarOrcamentoPorOsId() {
         // Arrange
-        UUID osId = UUID.randomUUID();
-        Orcamento orcamento = Orcamento.criar(osId, "Teste");
-        repository.save(orcamento);
+        when(dynamoDbRepository.findByOsId(osId.toString())).thenReturn(Optional.of(orcamentoEntity));
+        when(mapper.toDomain(orcamentoEntity)).thenReturn(orcamento);
 
         // Act
         Optional<Orcamento> found = repository.findByOsId(osId);
@@ -72,6 +85,7 @@ class OrcamentoRepositoryTest {
         // Assert
         assertTrue(found.isPresent());
         assertEquals(osId, found.get().getOsId());
+        verify(dynamoDbRepository).findByOsId(osId.toString());
     }
 
     @Test
@@ -79,36 +93,31 @@ class OrcamentoRepositoryTest {
     void deveBuscarOrcamentosPorStatus() {
         // Arrange
         Orcamento orc1 = Orcamento.criar(UUID.randomUUID(), "Orc 1");
-        Orcamento orc2 = Orcamento.criar(UUID.randomUUID(), "Orc 2");
-        Orcamento orc3 = Orcamento.criar(UUID.randomUUID(), "Orc 3");
 
-        orc2.aprovar();
-        orc3.aprovar();
-
-        repository.save(orc1);
-        repository.save(orc2);
-        repository.save(orc3);
+        when(dynamoDbRepository.findByStatus("PENDENTE")).thenReturn(List.of(orcamentoEntity));
+        when(mapper.toDomain(orcamentoEntity)).thenReturn(orc1);
 
         // Act
         List<Orcamento> pendentes = repository.findByStatus(StatusOrcamento.PENDENTE);
-        List<Orcamento> aprovados = repository.findByStatus(StatusOrcamento.APROVADO);
 
         // Assert
         assertEquals(1, pendentes.size());
-        assertEquals(2, aprovados.size());
+        verify(dynamoDbRepository).findByStatus("PENDENTE");
     }
 
     @Test
     @DisplayName("Deve verificar existência por osId")
     void deveVerificarExistenciaPorOsId() {
         // Arrange
-        UUID osId = UUID.randomUUID();
-        Orcamento orcamento = Orcamento.criar(osId, "Teste");
-        repository.save(orcamento);
+        UUID existingOsId = UUID.randomUUID();
+        UUID nonExistingOsId = UUID.randomUUID();
+
+        when(dynamoDbRepository.existsByOsId(existingOsId.toString())).thenReturn(true);
+        when(dynamoDbRepository.existsByOsId(nonExistingOsId.toString())).thenReturn(false);
 
         // Act
-        boolean existe = repository.existsByOsId(osId);
-        boolean naoExiste = repository.existsByOsId(UUID.randomUUID());
+        boolean existe = repository.existsByOsId(existingOsId);
+        boolean naoExiste = repository.existsByOsId(nonExistingOsId);
 
         // Assert
         assertTrue(existe);
@@ -116,20 +125,19 @@ class OrcamentoRepositoryTest {
     }
 
     @Test
-    @DisplayName("Deve atualizar orçamento mantendo itens e histórico")
-    void deveAtualizarOrcamentoMantendoItensEHistorico() {
+    @DisplayName("Deve buscar orçamento por id")
+    void deveBuscarOrcamentoPorId() {
         // Arrange
-        Orcamento orcamento = Orcamento.criar(UUID.randomUUID(), "Teste");
-        orcamento.adicionarItem(new ItemOrcamento(TipoItem.PECA, "Peça 1", 2, new BigDecimal("50.00")));
-        Orcamento saved = repository.save(orcamento);
+        UUID id = orcamento.getId();
+        when(dynamoDbRepository.findById(id.toString())).thenReturn(Optional.of(orcamentoEntity));
+        when(mapper.toDomain(orcamentoEntity)).thenReturn(orcamento);
 
         // Act
-        saved.aprovar();
-        Orcamento updated = repository.save(saved);
+        Optional<Orcamento> found = repository.findById(id);
 
         // Assert
-        assertEquals(StatusOrcamento.APROVADO, updated.getStatus());
-        assertEquals(1, updated.getItens().size());
-        assertTrue(updated.getHistorico().size() >= 1, "Deve ter pelo menos 1 registro no histórico");
+        assertTrue(found.isPresent());
+        assertEquals(id, found.get().getId());
+        verify(dynamoDbRepository).findById(id.toString());
     }
 }

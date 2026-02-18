@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 import java.util.UUID;
 
 /**
- * Mapper para converter entre Pagamento (domain) e PagamentoEntity (MongoDB)
+ * Mapper para converter entre Pagamento (domain) e PagamentoEntity (DynamoDB)
  * 
  * ✅ CLEAN ARCHITECTURE: Mapper na infrastructure layer
  */
@@ -32,6 +32,9 @@ public class PagamentoEntityMapper {
                 .valor(pagamento.getValor())
                 .formaPagamento(pagamento.getFormaPagamento() != null ? pagamento.getFormaPagamento().name() : null)
                 .comprovante(pagamento.getComprovante())
+                .mercadoPagoPaymentId(pagamento.getMercadoPagoPaymentId())
+                .mercadoPagoPreferenceId(pagamento.getMercadoPagoPreferenceId())
+                .initPoint(pagamento.getInitPoint())
                 .dataPagamento(pagamento.getDataPagamento())
                 .dataEstorno(pagamento.getDataEstorno())
                 .motivoEstorno(pagamento.getMotivoEstorno())
@@ -56,6 +59,9 @@ public class PagamentoEntityMapper {
                 .formaPagamento(
                         entity.getFormaPagamento() != null ? FormaPagamento.valueOf(entity.getFormaPagamento()) : null)
                 .comprovante(entity.getComprovante())
+                .mercadoPagoPaymentId(entity.getMercadoPagoPaymentId())
+                .mercadoPagoPreferenceId(entity.getMercadoPagoPreferenceId())
+                .initPoint(entity.getInitPoint())
                 .dataPagamento(entity.getDataPagamento())
                 .dataEstorno(entity.getDataEstorno())
                 .motivoEstorno(entity.getMotivoEstorno())

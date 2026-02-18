@@ -5,7 +5,6 @@ import br.com.grupo99.billingservice.domain.events.OrcamentoProntoEvent;
 import br.com.grupo99.billingservice.domain.events.OrcamentoRejeitadoEvent;
 import br.com.grupo99.billingservice.domain.events.PagamentoFalhouEvent;
 import br.com.grupo99.billingservice.infrastructure.config.KafkaConfig;
-import br.com.grupo99.billingservice.testconfig.DynamoDbTestContainer;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -16,14 +15,16 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.support.serializer.JsonDeserializer;
 import org.springframework.kafka.test.EmbeddedKafkaBroker;
 import org.springframework.kafka.test.context.EmbeddedKafka;
 import org.springframework.kafka.test.utils.KafkaTestUtils;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.TestPropertySource;
+import software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient;
+import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -37,18 +38,27 @@ import static org.awaitility.Awaitility.await;
 
 /**
  * Testes de integração para o KafkaBillingEventPublisher
- * Utiliza Embedded Kafka para testes isolados
+ * Utiliza Embedded Kafka para testes isolados.
+ * DynamoDB é mockado para não depender de Docker/Testcontainers.
  */
 @SpringBootTest
 @ActiveProfiles("test")
-@ContextConfiguration(initializers = DynamoDbTestContainer.Initializer.class)
 @EmbeddedKafka(partitions = 1, brokerProperties = { "listeners=PLAINTEXT://localhost:9092", "port=9092" }, topics = {
                 KafkaConfig.TOPIC_BILLING_EVENTS, KafkaConfig.TOPIC_OS_EVENTS, KafkaConfig.TOPIC_EXECUTION_EVENTS })
 @TestPropertySource(properties = {
                 "spring.kafka.bootstrap-servers=${spring.embedded.kafka.brokers}",
-                "spring.kafka.consumer.auto-offset-reset=earliest"
+                "spring.kafka.consumer.auto-offset-reset=earliest",
+                "aws.dynamodb.endpoint=",
+                "mercadopago.access-token=TEST-fake-token",
+                "mercadopago.notification-url=http://localhost:8080/pagamentos/webhook"
 })
 class KafkaBillingEventPublisherTest {
+
+        @MockBean
+        private DynamoDbClient dynamoDbClient;
+
+        @MockBean
+        private DynamoDbEnhancedClient dynamoDbEnhancedClient;
 
         @Autowired
         private KafkaBillingEventPublisher kafkaPublisher;

@@ -9,6 +9,7 @@ import lombok.Getter;
 public enum StatusPagamento {
 
     PENDENTE("Pendente confirmação"),
+    PROCESSANDO("Processando no Mercado Pago"),
     CONFIRMADO("Confirmado"),
     ESTORNADO("Estornado"),
     CANCELADO("Cancelado");
@@ -27,7 +28,8 @@ public enum StatusPagamento {
      */
     public boolean podeTransicionarPara(StatusPagamento novoStatus) {
         return switch (this) {
-            case PENDENTE -> novoStatus == CONFIRMADO || novoStatus == CANCELADO;
+            case PENDENTE -> novoStatus == PROCESSANDO || novoStatus == CONFIRMADO || novoStatus == CANCELADO;
+            case PROCESSANDO -> novoStatus == CONFIRMADO || novoStatus == CANCELADO || novoStatus == ESTORNADO;
             case CONFIRMADO -> novoStatus == ESTORNADO;
             case ESTORNADO, CANCELADO -> false; // Estados finais
         };

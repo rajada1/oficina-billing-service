@@ -3,6 +3,7 @@ package br.com.grupo99.billingservice.testconfig;
 import org.springframework.boot.test.util.TestPropertyValues;
 import org.springframework.context.ApplicationContextInitializer;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.lang.NonNull;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.utility.DockerImageName;
 
@@ -18,10 +19,12 @@ public class DynamoDbTestContainer {
     private static final GenericContainer<?> DYNAMODB_LOCAL;
 
     static {
-        DYNAMODB_LOCAL = new GenericContainer<>(DockerImageName.parse("amazon/dynamodb-local:2.2.1"))
+        @SuppressWarnings("resource")
+        GenericContainer<?> container = new GenericContainer<>(DockerImageName.parse("amazon/dynamodb-local:2.2.1"))
                 .withExposedPorts(8000)
                 .withCommand("-jar DynamoDBLocal.jar -inMemory -sharedDb");
-        DYNAMODB_LOCAL.start();
+        container.start();
+        DYNAMODB_LOCAL = container;
     }
 
     public static String getEndpoint() {
@@ -34,7 +37,7 @@ public class DynamoDbTestContainer {
      */
     public static class Initializer implements ApplicationContextInitializer<ConfigurableApplicationContext> {
         @Override
-        public void initialize(ConfigurableApplicationContext context) {
+        public void initialize(@NonNull ConfigurableApplicationContext context) {
             TestPropertyValues.of(
                     "aws.dynamodb.endpoint=" + getEndpoint(),
                     "aws.dynamodb.table-prefix=test-",

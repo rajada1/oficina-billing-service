@@ -24,4 +24,5 @@ public class CreatePagamentoRequest {
     private BigDecimal valor;
     private String formaPagamento;
     private String comprovante;
+    private String payerEmail;
 }

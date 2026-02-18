@@ -15,7 +15,6 @@ import software.amazon.awssdk.services.dynamodb.model.*;
 
 import jakarta.annotation.PostConstruct;
 import java.net.URI;
-import java.util.List;
 
 /**
  * Configuração DynamoDB para o Billing Service.

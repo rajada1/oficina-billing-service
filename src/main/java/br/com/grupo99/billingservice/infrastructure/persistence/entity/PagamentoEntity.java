@@ -38,6 +38,12 @@ public class PagamentoEntity {
 
     private String comprovante;
 
+    private Long mercadoPagoPaymentId;
+
+    private String mercadoPagoPreferenceId;
+
+    private String initPoint;
+
     private Instant dataPagamento;
 
     private Instant dataEstorno;

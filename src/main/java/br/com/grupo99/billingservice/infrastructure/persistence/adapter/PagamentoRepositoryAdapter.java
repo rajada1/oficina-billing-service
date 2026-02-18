@@ -102,6 +102,28 @@ public class PagamentoRepositoryAdapter implements PagamentoRepository {
     }
 
     /**
+     * Busca Pagamento por Mercado Pago Payment ID
+     */
+    @Override
+    public Optional<Pagamento> findByMercadoPagoPaymentId(Long mercadoPagoPaymentId) {
+        log.debug("Buscando pagamento por mercadoPagoPaymentId: {}", mercadoPagoPaymentId);
+        var entity = dynamoDbRepository.findByMercadoPagoPaymentId(mercadoPagoPaymentId);
+        return entity.map(mapper::toDomain);
+    }
+
+    /**
+     * Lista todos os Pagamentos
+     */
+    @Override
+    public List<Pagamento> findAll() {
+        log.debug("Listando todos os pagamentos");
+        var entities = dynamoDbRepository.findAll();
+        return entities.stream()
+                .map(mapper::toDomain)
+                .collect(Collectors.toList());
+    }
+
+    /**
      * Deleta um Pagamento
      */
     @Override

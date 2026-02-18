@@ -41,11 +41,9 @@ public class KafkaBillingEventPublisher implements BillingEventPublisherPort {
     private static final String CIRCUIT_BREAKER_NAME = "kafkaPublisher";
 
     private final KafkaTemplate<String, Object> kafkaTemplate;
-    private final ObjectMapper objectMapper;
 
     public KafkaBillingEventPublisher(KafkaTemplate<String, Object> kafkaTemplate, ObjectMapper objectMapper) {
         this.kafkaTemplate = kafkaTemplate;
-        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -216,6 +214,7 @@ public class KafkaBillingEventPublisher implements BillingEventPublisherPort {
 
     // ===================== MÉTODOS AUXILIARES =====================
 
+    @SuppressWarnings("null")
     private void sendAsync(ProducerRecord<String, Object> record, String eventType, String id) {
         CompletableFuture<SendResult<String, Object>> future = kafkaTemplate.send(record);
 
@@ -232,6 +231,7 @@ public class KafkaBillingEventPublisher implements BillingEventPublisherPort {
         });
     }
 
+    @SuppressWarnings("null")
     private void sendSync(ProducerRecord<String, Object> record, String eventType, String id) {
         try {
             SendResult<String, Object> result = kafkaTemplate.send(record).get();

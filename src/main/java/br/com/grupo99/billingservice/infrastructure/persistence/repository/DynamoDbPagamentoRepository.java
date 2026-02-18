@@ -127,6 +127,28 @@ public class DynamoDbPagamentoRepository {
     }
 
     /**
+     * Busca PagamentoEntity por mercadoPagoPaymentId (scan com filtro).
+     */
+    public Optional<PagamentoEntity> findByMercadoPagoPaymentId(Long mercadoPagoPaymentId) {
+        ScanEnhancedRequest request = ScanEnhancedRequest.builder()
+                .filterExpression(Expression.builder()
+                        .expression("mercadoPagoPaymentId = :mpId")
+                        .putExpressionValue(":mpId",
+                                AttributeValue.builder().n(mercadoPagoPaymentId.toString()).build())
+                        .build())
+                .build();
+
+        return table.scan(request).items().stream().findFirst();
+    }
+
+    /**
+     * Lista todos os PagamentoEntities (scan completo).
+     */
+    public List<PagamentoEntity> findAll() {
+        return table.scan().items().stream().collect(Collectors.toList());
+    }
+
+    /**
      * Deleta PagamentoEntity por ID.
      */
     public void deleteById(String id) {

@@ -88,12 +88,7 @@ public class OrcamentoRepositoryAdapter implements OrcamentoRepository {
     @Override
     public List<Orcamento> findByStatus(StatusOrcamento status) {
         log.debug("Buscando orcamentos por status: {}", status);
-
-        // 1. Buscar no DynamoDB
-        var entities = dynamoDbRepository.findByStatus(status.name());
-
-        // 2. Entity → Domain (stream)
-        return entities.stream()
+        return dynamoDbRepository.findByStatus(status.name()).stream()
                 .map(mapper::toDomain)
                 .collect(Collectors.toList());
     }
@@ -105,6 +100,17 @@ public class OrcamentoRepositoryAdapter implements OrcamentoRepository {
     public boolean existsByOsId(UUID osId) {
         log.debug("Verificando existência de orcamento para osId: {}", osId);
         return dynamoDbRepository.existsByOsId(osId.toString());
+    }
+
+    /**
+     * Busca todos os Orcamentos
+     */
+    @Override
+    public List<Orcamento> findAll() {
+        log.debug("Buscando todos os orcamentos");
+        return dynamoDbRepository.findAll().stream()
+                .map(mapper::toDomain)
+                .collect(Collectors.toList());
     }
 
     /**

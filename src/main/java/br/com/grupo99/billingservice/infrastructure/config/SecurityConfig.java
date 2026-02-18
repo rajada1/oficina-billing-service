@@ -66,6 +66,7 @@ public class SecurityConfig {
         }
         http.csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.POST, "/pagamentos/webhook").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/faturas/**").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/v1/billing/**").authenticated()
                         .requestMatchers("/api/v1/**").authenticated()

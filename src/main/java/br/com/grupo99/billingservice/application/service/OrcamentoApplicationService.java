@@ -4,13 +4,14 @@ import br.com.grupo99.billingservice.application.dto.CreateOrcamentoRequest;
 import br.com.grupo99.billingservice.application.dto.OrcamentoResponse;
 import br.com.grupo99.billingservice.application.mapper.OrcamentoMapper;
 import br.com.grupo99.billingservice.domain.model.Orcamento;
-import br.com.grupo99.billingservice.domain.model.StatusOrcamento;
 import br.com.grupo99.billingservice.domain.repository.OrcamentoRepository;
-import br.com.grupo99.billingservice.infrastructure.messaging.BillingEventPublisher;
+import br.com.grupo99.billingservice.infrastructure.messaging.BillingEventPublisherPort;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.stream.Collectors;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -27,12 +28,12 @@ import java.util.UUID;
 public class OrcamentoApplicationService {
 
     private final OrcamentoRepository orcamentoRepository;
-    private final BillingEventPublisher eventPublisher;
+    private final BillingEventPublisherPort eventPublisher;
     private final OrcamentoMapper mapper;
 
     public OrcamentoApplicationService(
             OrcamentoRepository orcamentoRepository,
-            BillingEventPublisher eventPublisher,
+            BillingEventPublisherPort eventPublisher,
             OrcamentoMapper mapper) {
         this.orcamentoRepository = orcamentoRepository;
         this.eventPublisher = eventPublisher;
@@ -153,5 +154,15 @@ public class OrcamentoApplicationService {
         orcamentoRepository.save(orcamento);
 
         log.info("Orçamento {} cancelado para OS: {}", orcamento.getId(), osId);
+    }
+
+    /**
+     * Use Case: Listar todos os orçamentos
+     */
+    public List<OrcamentoResponse> listarTodos() {
+        log.info("Listando todos os orçamentos");
+        return orcamentoRepository.findAll().stream()
+                .map(mapper::toResponse)
+                .collect(Collectors.toList());
     }
 }

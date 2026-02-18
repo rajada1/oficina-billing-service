@@ -72,8 +72,8 @@ class PagamentoTest {
         }
 
         @Test
-        @DisplayName("Não deve confirmar pagamento já confirmado")
-        void naoDeveConfirmarPagamentoJaConfirmado() {
+        @DisplayName("Deve ser idempotente ao confirmar pagamento já confirmado")
+        void deveSerIdempotenteAoConfirmarPagamentoJaConfirmado() {
                 // Arrange
                 Pagamento pagamento = Pagamento.criar(
                                 UUID.randomUUID(),
@@ -82,8 +82,11 @@ class PagamentoTest {
                                 FormaPagamento.DINHEIRO);
                 pagamento.confirmar();
 
-                // Act & Assert
-                assertThrows(IllegalStateException.class, () -> pagamento.confirmar());
+                // Act
+                pagamento.confirmar();
+
+                // Assert
+                assertEquals(StatusPagamento.CONFIRMADO, pagamento.getStatus());
         }
 
         @Test
@@ -101,8 +104,8 @@ class PagamentoTest {
         }
 
         @Test
-        @DisplayName("Não deve estornar pagamento já estornado")
-        void naoDeveEstornarPagamentoJaEstornado() {
+        @DisplayName("Deve ser idempotente ao estornar pagamento já estornado")
+        void deveSerIdempotenteAoEstornarPagamentoJaEstornado() {
                 // Arrange
                 Pagamento pagamento = Pagamento.criar(
                                 UUID.randomUUID(),
@@ -112,8 +115,11 @@ class PagamentoTest {
                 pagamento.confirmar();
                 pagamento.estornar();
 
-                // Act & Assert
-                assertThrows(IllegalStateException.class, () -> pagamento.estornar());
+                // Act
+                pagamento.estornar();
+
+                // Assert
+                assertEquals(StatusPagamento.ESTORNADO, pagamento.getStatus());
         }
 
         @Test

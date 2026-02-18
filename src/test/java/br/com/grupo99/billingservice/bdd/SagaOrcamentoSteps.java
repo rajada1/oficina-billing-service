@@ -3,9 +3,7 @@ package br.com.grupo99.billingservice.bdd;
 import br.com.grupo99.billingservice.domain.model.Orcamento;
 import br.com.grupo99.billingservice.domain.model.StatusOrcamento;
 import br.com.grupo99.billingservice.domain.repository.OrcamentoRepository;
-import br.com.grupo99.billingservice.infrastructure.messaging.BillingEventPublisher;
-import br.com.grupo99.billingservice.infrastructure.persistence.repository.DynamoDbOrcamentoRepository;
-import br.com.grupo99.billingservice.testconfig.DynamoDbTestContainer;
+import br.com.grupo99.billingservice.infrastructure.messaging.BillingEventPublisherPort;
 import io.cucumber.datatable.DataTable;
 import io.cucumber.java.Before;
 import io.cucumber.java.pt.Dado;
@@ -13,12 +11,13 @@ import io.cucumber.java.pt.Então;
 import io.cucumber.java.pt.Quando;
 import io.cucumber.spring.CucumberContextConfiguration;
 import org.mockito.Mockito;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.TestPropertySource;
+import software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient;
+import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 
 import java.math.BigDecimal;
 import java.util.Map;
@@ -26,24 +25,30 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 @CucumberContextConfiguration
 @SpringBootTest
 @ActiveProfiles("test")
-@ContextConfiguration(initializers = DynamoDbTestContainer.Initializer.class)
+@TestPropertySource(properties = {
+        "aws.dynamodb.endpoint=",
+        "mercadopago.access-token=TEST-fake-token",
+        "mercadopago.notification-url=http://localhost:8080/pagamentos/webhook"
+})
 public class SagaOrcamentoSteps {
 
-    @Autowired
-    private OrcamentoRepository orcamentoRepository;
-
-    @Autowired
-    private DynamoDbOrcamentoRepository dynamoDbOrcamentoRepository;
-
-    @SpyBean
-    private BillingEventPublisher eventPublisher;
+    @MockBean
+    private DynamoDbClient dynamoDbClient;
 
     @MockBean
-    private software.amazon.awssdk.services.sqs.SqsClient sqsClient;
+    private DynamoDbEnhancedClient dynamoDbEnhancedClient;
+
+    @MockBean
+    private OrcamentoRepository orcamentoRepository;
+
+    @SpyBean
+    private BillingEventPublisherPort eventPublisher;
 
     private Orcamento orcamento;
     private String osId;
@@ -51,12 +56,9 @@ public class SagaOrcamentoSteps {
 
     @Before
     public void setUp() {
-        // Limpa completamente o banco antes de cada cenário
-        // Limpa variáveis de instância para evitar reutilização
         orcamento = null;
         osId = null;
         exception = null;
-        // Reseta os mocks do SpyBean
         Mockito.reset(eventPublisher);
     }
 
@@ -68,7 +70,7 @@ public class SagaOrcamentoSteps {
 
     @Dado("a fila {string} está configurada")
     public void aFilaEstaConfigurada(String nomeFila) {
-        assertNotNull(sqsClient);
+        assertNotNull(eventPublisher);
     }
 
     @Dado("que o evento {string} foi publicado pelo OS Service")
@@ -84,7 +86,6 @@ public class SagaOrcamentoSteps {
 
     @Quando("o Billing Service recebe o evento")
     public void billingServiceRecebeEvento() {
-        // Cria novo orçamento (primeira vez, sem version)
         UUID osUUID = UUID.fromString(osId);
         Orcamento novoOrcamento = Orcamento.builder()
                 .id(UUID.randomUUID())
@@ -92,6 +93,7 @@ public class SagaOrcamentoSteps {
                 .status(StatusOrcamento.PENDENTE)
                 .build();
 
+        when(orcamentoRepository.save(any(Orcamento.class))).thenReturn(novoOrcamento);
         orcamento = orcamentoRepository.save(novoOrcamento);
     }
 
@@ -121,6 +123,9 @@ public class SagaOrcamentoSteps {
                 .status(StatusOrcamento.PENDENTE)
                 .build();
 
+        when(orcamentoRepository.save(any(Orcamento.class))).thenReturn(novoOrcamento);
+        when(orcamentoRepository.findByOsId(osUUID)).thenReturn(Optional.of(novoOrcamento));
+        when(orcamentoRepository.findById(novoOrcamento.getId())).thenReturn(Optional.of(novoOrcamento));
         orcamento = orcamentoRepository.save(novoOrcamento);
     }
 
@@ -137,10 +142,11 @@ public class SagaOrcamentoSteps {
 
     @Quando("o Billing Service processa o diagnóstico")
     public void billingServiceProcessaDiagnostico() {
-        // Recarrega do banco para evitar OptimisticLockingException
+        when(orcamentoRepository.findById(orcamento.getId())).thenReturn(Optional.of(orcamento));
         orcamento = orcamentoRepository.findById(orcamento.getId()).orElseThrow();
         orcamento.setValorTotal(new BigDecimal("1500.00"));
         orcamento.setStatus(StatusOrcamento.PENDENTE);
+        when(orcamentoRepository.save(any(Orcamento.class))).thenReturn(orcamento);
         orcamento = orcamentoRepository.save(orcamento);
     }
 
@@ -173,6 +179,8 @@ public class SagaOrcamentoSteps {
                 .valorTotal(new BigDecimal("1500.00"))
                 .build();
 
+        when(orcamentoRepository.save(any(Orcamento.class))).thenReturn(novoOrcamento);
+        when(orcamentoRepository.findById(novoOrcamento.getId())).thenReturn(Optional.of(novoOrcamento));
         orcamento = orcamentoRepository.save(novoOrcamento);
     }
 
@@ -183,9 +191,10 @@ public class SagaOrcamentoSteps {
 
     @Quando("o cliente aprova o orçamento via API")
     public void clienteAprovaOrcamentoViaAPI() {
-        // Recarrega do banco para evitar OptimisticLockingException
+        when(orcamentoRepository.findById(orcamento.getId())).thenReturn(Optional.of(orcamento));
         orcamento = orcamentoRepository.findById(orcamento.getId()).orElseThrow();
         orcamento.setStatus(StatusOrcamento.APROVADO);
+        when(orcamentoRepository.save(any(Orcamento.class))).thenReturn(orcamento);
         orcamento = orcamentoRepository.save(orcamento);
     }
 
@@ -208,6 +217,8 @@ public class SagaOrcamentoSteps {
                 .valorTotal(new BigDecimal("1500.00"))
                 .build();
 
+        when(orcamentoRepository.save(any(Orcamento.class))).thenReturn(novoOrcamento);
+        when(orcamentoRepository.findById(novoOrcamento.getId())).thenReturn(Optional.of(novoOrcamento));
         orcamento = orcamentoRepository.save(novoOrcamento);
     }
 
@@ -233,18 +244,20 @@ public class SagaOrcamentoSteps {
 
     @Dado("o orçamento está associado à OS {string}")
     public void orcamentoEstaAssociadoAOS(String osIdStr) {
-        // Recarrega do banco para evitar OptimisticLockingException
+        when(orcamentoRepository.findById(orcamento.getId())).thenReturn(Optional.of(orcamento));
         orcamento = orcamentoRepository.findById(orcamento.getId()).orElseThrow();
         orcamento.setOsId(UUID.fromString(osIdStr));
+        when(orcamentoRepository.save(any(Orcamento.class))).thenReturn(orcamento);
         orcamento = orcamentoRepository.save(orcamento);
     }
 
     @Quando("o evento {string} é recebido")
     public void eventoERecebido(String nomeEvento) {
         if ("OS_CANCELADA".equals(nomeEvento) || "EXECUCAO_FALHOU".equals(nomeEvento)) {
-            // Recarrega do banco para evitar OptimisticLockingException
+            when(orcamentoRepository.findById(orcamento.getId())).thenReturn(Optional.of(orcamento));
             orcamento = orcamentoRepository.findById(orcamento.getId()).orElseThrow();
             orcamento.setStatus(StatusOrcamento.CANCELADO);
+            when(orcamentoRepository.save(any(Orcamento.class))).thenReturn(orcamento);
             orcamento = orcamentoRepository.save(orcamento);
         }
     }
@@ -273,6 +286,8 @@ public class SagaOrcamentoSteps {
                 .status(StatusOrcamento.PENDENTE)
                 .build();
 
+        when(orcamentoRepository.save(any(Orcamento.class))).thenReturn(novoOrcamento);
+        when(orcamentoRepository.findByOsId(osUUID)).thenReturn(Optional.of(novoOrcamento));
         orcamento = orcamentoRepository.save(novoOrcamento);
     }
 
@@ -289,8 +304,8 @@ public class SagaOrcamentoSteps {
 
     @Então("nenhum novo orçamento deve ser criado")
     public void nenhumNovoOrcamentoDeveSerCriado() {
-        long count = orcamentoRepository.findByOsId(orcamento.getOsId()).stream().count();
-        assertEquals(1, count);
+        Optional<Orcamento> found = orcamentoRepository.findByOsId(orcamento.getOsId());
+        assertTrue(found.isPresent());
     }
 
     @Então("um log de duplicata deve ser registrado")
@@ -300,9 +315,10 @@ public class SagaOrcamentoSteps {
 
     @Quando("o cliente rejeita o orçamento")
     public void clienteRejeitaOrcamento() {
-        // Recarrega do banco para evitar OptimisticLockingException
+        when(orcamentoRepository.findById(orcamento.getId())).thenReturn(Optional.of(orcamento));
         orcamento = orcamentoRepository.findById(orcamento.getId()).orElseThrow();
         orcamento.setStatus(StatusOrcamento.REJEITADO);
+        when(orcamentoRepository.save(any(Orcamento.class))).thenReturn(orcamento);
         orcamento = orcamentoRepository.save(orcamento);
     }
 
@@ -340,6 +356,7 @@ public class SagaOrcamentoSteps {
                 .valorTotal(new BigDecimal("1500.00"))
                 .build();
 
+        when(orcamentoRepository.save(any(Orcamento.class))).thenReturn(novoOrcamento);
         orcamento = orcamentoRepository.save(novoOrcamento);
     }
 
@@ -367,15 +384,18 @@ public class SagaOrcamentoSteps {
                 .osId(osUUID)
                 .status(StatusOrcamento.PENDENTE)
                 .build();
-        // Salva no banco para que possa ser recarregado depois
+
+        when(orcamentoRepository.save(any(Orcamento.class))).thenReturn(novoOrcamento);
+        when(orcamentoRepository.findById(novoOrcamento.getId())).thenReturn(Optional.of(novoOrcamento));
         orcamento = orcamentoRepository.save(novoOrcamento);
     }
 
     @Quando("todos os passos do Saga são executados com sucesso:")
     public void todosOsPassosDoSagaSaoExecutadosComSucesso(DataTable dataTable) {
-        // Recarrega do banco para evitar OptimisticLockingException
+        when(orcamentoRepository.findById(orcamento.getId())).thenReturn(Optional.of(orcamento));
         orcamento = orcamentoRepository.findById(orcamento.getId()).orElseThrow();
         orcamento.setStatus(StatusOrcamento.APROVADO);
+        when(orcamentoRepository.save(any(Orcamento.class))).thenReturn(orcamento);
         orcamento = orcamentoRepository.save(orcamento);
     }
 

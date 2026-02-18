@@ -50,13 +50,18 @@ public interface OrcamentoRepository {
 
     /**
      * Verifica se existe orçamento para uma OS.
-     * /**
-     * Verifica se existe orçamento para uma OS.
      *
      * @param osId ID da ordem de serviço
      * @return true se existe
      */
     boolean existsByOsId(UUID osId);
+
+    /**
+     * Busca todos os orçamentos.
+     *
+     * @return lista de orçamentos
+     */
+    List<Orcamento> findAll();
 
     /**
      * Deleta um orçamento.

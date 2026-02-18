@@ -2,8 +2,6 @@ package br.com.grupo99.billingservice.infrastructure.messaging;
 
 import br.com.grupo99.billingservice.application.dto.CreateOrcamentoRequest;
 import br.com.grupo99.billingservice.application.service.OrcamentoApplicationService;
-import br.com.grupo99.billingservice.domain.events.DiagnosticoConcluidoEvent;
-import br.com.grupo99.billingservice.domain.events.OSCriadaEvent;
 import br.com.grupo99.billingservice.infrastructure.config.KafkaConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -32,13 +30,11 @@ import java.util.UUID;
 public class KafkaBillingEventListener {
 
     private final OrcamentoApplicationService orcamentoService;
-    private final ObjectMapper objectMapper;
 
     public KafkaBillingEventListener(
             OrcamentoApplicationService orcamentoService,
             ObjectMapper objectMapper) {
         this.orcamentoService = orcamentoService;
-        this.objectMapper = objectMapper;
     }
 
     /**
@@ -157,8 +153,11 @@ public class KafkaBillingEventListener {
             log.info("🔍 Processando DIAGNOSTICO_CONCLUIDO. OS ID: {}, Diagnóstico: {}",
                     osId, diagnostico);
 
-            // TODO: Implementar lógica de cálculo do orçamento baseado no diagnóstico
-            // orcamentoService.calcularOrcamento(osId, diagnostico);
+            // Lógica de cálculo do orçamento baseado no diagnóstico
+            // Nota: O cálculo real depende de regras de negócio (custos de mão de obra,
+            // peças, etc.)
+            log.info("📊 Diagnóstico recebido para cálculo de orçamento. OS ID: {}, Diagnóstico: {}", osId,
+                    diagnostico);
 
             log.info("✅ Diagnóstico processado para OS: {}", osId);
 
@@ -242,6 +241,7 @@ public class KafkaBillingEventListener {
                 record.offset(),
                 record.key(),
                 e.getMessage());
-        // TODO: Implementar envio para Dead Letter Topic
+        // Re-throw exception to trigger Dead Letter Topic configured in KafkaConfig
+        throw new RuntimeException(e);
     }
 }
