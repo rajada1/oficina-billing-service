@@ -1,294 +1,256 @@
 name: Build and Deploy Billing Service
 
 on:
-    push:
-        branches:
-            - master
-            - main
-    pull_request:
-        types: [opened, synchronize, reopened]
-    workflow_dispatch:
-        inputs:
-            environment:
-                description: "Environment to deploy"
-                required: true
-                default: "dev"
-                type: choice
-                options:
-                    - dev
+  push:
+    branches:
+      - master
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to deploy"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
 
 env:
-    AWS_REGION: us-east-1
-    ECR_REPOSITORY: billing-service
-    EKS_CLUSTER_NAME: tech-challenge-cluster
-    JAVA_VERSION: "21"
-    K8S_INFRA_REPO: "tech_challenge_k8s_infra"
-    SERVICE_NAME: "billing-service"
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: billing-service
+  EKS_CLUSTER_NAME: tech-challenge-cluster
+  JAVA_VERSION: "21"
+  SERVICE_NAME: "billing-service"
 
 jobs:
-    test:
-        name: Test
-        runs-on: ubuntu-latest
-        permissions:
-            contents: read
-            checks: write
-        steps:
-            - name: Checkout code
-              uses: actions/checkout@v4
-              with:
-                  fetch-depth: 0
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-            - name: Set up JDK 21
-              uses: actions/setup-java@v4
-              with:
-                  java-version: ${{ env.JAVA_VERSION }}
-                  distribution: "temurin"
-                  cache: maven
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: "temurin"
+          cache: maven
 
-            - name: Run tests
-              run: mvn clean test
+      - name: Run tests
+        run: mvn clean test
 
-            - name: Generate test report
-              if: always()
-              uses: dorny/test-reporter@v1
-              with:
-                  name: Maven Tests
-                  path: target/surefire-reports/*.xml
-                  reporter: java-junit
+      - name: Generate test report
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Maven Tests
+          path: target/surefire-reports/*.xml
+          reporter: java-junit
 
-            - name: Generate coverage report
-              run: mvn jacoco:report
+      - name: Generate coverage report
+        run: mvn jacoco:report
 
-            - name: Upload coverage to Codecov
-              uses: codecov/codecov-action@v4
-              with:
-                  files: ./target/site/jacoco/jacoco.xml
-                  flags: unittests
-                  name: billing-service-coverage
-                  fail_ci_if_error: false
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./target/site/jacoco/jacoco.xml
+          flags: unittests
+          name: billing-service-coverage
+          fail_ci_if_error: false
 
-            - name: Cache SonarCloud packages
-              uses: actions/cache@v4
-              with:
-                  path: ~/.sonar/cache
-                  key: ${{ runner.os }}-sonar
-                  restore-keys: ${{ runner.os }}-sonar
+      - name: Cache SonarCloud packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
 
-            - name: SonarCloud Scan
-              env:
-                  SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-              run: |
-                  mvn -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
-                    -DskipTests \
-                    -Dsonar.projectKey=soat12-fiap_oficina-billing-service \
-                    -Dsonar.organization=soat12-fiap \
-                    -Dsonar.host.url=https://sonarcloud.io \
-                    -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
+      - name: SonarCloud Scan
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mvn -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
+            -DskipTests \
+            -Dsonar.projectKey=soat12-fiap_oficina-billing-service \
+            -Dsonar.organization=soat12-fiap \
+            -Dsonar.host.url=https://sonarcloud.io \
+            -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
 
-    build:
-        name: Build and Push Docker Image
-        needs: test
-        runs-on: ubuntu-latest
-        permissions:
-            contents: read
-        outputs:
-            image_tag: ${{ steps.meta.outputs.tags }}
+  build:
+    name: Build and Push Docker Image
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tags }}
 
-        steps:
-            - name: Checkout code
-              uses: actions/checkout@v4
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-            - name: Set up JDK 21
-              uses: actions/setup-java@v4
-              with:
-                  java-version: ${{ env.JAVA_VERSION }}
-                  distribution: "temurin"
-                  cache: maven
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: "temurin"
+          cache: maven
 
-            - name: Build with Maven
-              run: mvn clean package -DskipTests
+      - name: Build with Maven
+        run: mvn clean package -DskipTests
 
-            - name: Set up Docker Buildx
-              uses: docker/setup-buildx-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-            - name: Configure AWS Credentials
-              uses: aws-actions/configure-aws-credentials@v4
-              with:
-                  aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-                  aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-                  aws-region: ${{ env.AWS_REGION }}
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
 
-            - name: Login to Amazon ECR
-              id: login-ecr
-              uses: aws-actions/amazon-ecr-login@v2
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
 
-            - name: Create ECR repository if not exists
-              run: |
-                  aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY }} || \
-                  aws ecr create-repository --repository-name ${{ env.ECR_REPOSITORY }}
+      - name: Create ECR repository if not exists
+        run: |
+          aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY }} || \
+          aws ecr create-repository --repository-name ${{ env.ECR_REPOSITORY }}
 
-            - name: Extract metadata for Docker
-              id: meta
-              uses: docker/metadata-action@v5
-              with:
-                  images: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}
-                  tags: |
-                      type=ref,event=branch
-                      type=ref,event=pr
-                      type=sha,prefix={{branch}}-
-                      type=raw,value=${{ github.sha }}
-                      type=raw,value=latest,enable={{is_default_branch}}
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=${{ github.sha }}
+            type=raw,value=latest,enable={{is_default_branch}}
 
-            - name: Build and push Docker image
-              uses: docker/build-push-action@v5
-              with:
-                  context: .
-                  push: true
-                  tags: ${{ steps.meta.outputs.tags }}
-                  labels: ${{ steps.meta.outputs.labels }}
-                  cache-from: type=gha
-                  cache-to: type=gha,mode=max
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-    deploy:
-        name: Deploy to Dev
-        needs: build
-        runs-on: ubuntu-latest
+  deploy:
+    name: Deploy to EKS
+    needs: build
+    runs-on: ubuntu-latest
 
-        steps:
-            - name: Checkout K8s Infra Repository
-              uses: actions/checkout@v4
-              with:
-                  repository: rajada1/${{ env.K8S_INFRA_REPO }}
-                  token: ${{ secrets.GITHUB_TOKEN }}
-                  path: k8s-infra
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-            - name: Configure AWS Credentials
-              uses: aws-actions/configure-aws-credentials@v4
-              with:
-                  aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-                  aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-                  aws-region: ${{ env.AWS_REGION }}
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
 
-            - name: Login to Amazon ECR
-              id: login-ecr
-              uses: aws-actions/amazon-ecr-login@v2
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
 
-            - name: Retrieve Secrets from SSM
-              id: ssm
-              run: |
-                  echo "Retrieving parameters from SSM..."
-                  ENVIRONMENT=${{ github.event.inputs.environment || 'dev' }}
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig \
+            --region ${{ env.AWS_REGION }} \
+            --name ${{ env.EKS_CLUSTER_NAME }}
 
-                  # MongoDB credentials
-                  MONGODB_ENDPOINT=$(aws ssm get-parameter --name "/microservices/$ENVIRONMENT/billing-mongodb-cluster/endpoint" --query "Parameter.Value" --output text)
-                  MONGODB_PORT=$(aws ssm get-parameter --name "/microservices/$ENVIRONMENT/billing-mongodb-cluster/port" --query "Parameter.Value" --output text)
+      - name: Create/Update Namespace
+        run: |
+          kubectl create namespace ${{ env.SERVICE_NAME }} --dry-run=client -o yaml | kubectl apply -f -
 
-                  # EKS Cluster Name
-                  EKS_CLUSTER_NAME=$(aws ssm get-parameter --name "/microservices/$ENVIRONMENT/eks/cluster_name" --query "Parameter.Value" --output text 2>/dev/null || echo "${{ env.EKS_CLUSTER_NAME }}")
-
-                  # Secure credentials
-                  MONGODB_USERNAME=$(aws ssm get-parameter --name "/microservices/$ENVIRONMENT/billing-mongodb-cluster/username" --with-decryption --query "Parameter.Value" --output text)
-                  MONGODB_PASSWORD=$(aws ssm get-parameter --name "/microservices/$ENVIRONMENT/billing-mongodb-cluster/password" --with-decryption --query "Parameter.Value" --output text)
-
-                  # Mask secrets
-                  echo "::add-mask::$MONGODB_USERNAME"
-                  echo "::add-mask::$MONGODB_PASSWORD"
-
-                  # Build MongoDB URI
-                  MONGODB_URI="mongodb://${MONGODB_USERNAME}:${MONGODB_PASSWORD}@${MONGODB_ENDPOINT}:${MONGODB_PORT}/billing?authSource=admin"
-                  echo "::add-mask::$MONGODB_URI"
-
-                  # Export to environment
-                  echo "MONGODB_URI=$MONGODB_URI" >> $GITHUB_ENV
-                  echo "MONGODB_USERNAME=$MONGODB_USERNAME" >> $GITHUB_ENV
-                  echo "MONGODB_PASSWORD=$MONGODB_PASSWORD" >> $GITHUB_ENV
-                  echo "EKS_CLUSTER_NAME=$EKS_CLUSTER_NAME" >> $GITHUB_ENV
-
-                  echo "Secrets retrieved successfully."
-
-            - name: Configure kubectl
-              run: |
-                  aws eks update-kubeconfig \
-                    --region ${{ env.AWS_REGION }} \
-                    --name ${{ env.EKS_CLUSTER_NAME }}
-
-            - name: Create/Update Namespace
-              run: |
-                  kubectl create namespace ${{ env.SERVICE_NAME }} --dry-run=client -o yaml | kubectl apply -f -
-
-            - name: Create/Update Secrets with MongoDB Credentials
-              run: |
-                  kubectl create secret generic billing-service-secrets \
-                    --from-literal=MONGODB_URI='${{ env.MONGODB_URI }}' \
-                    --from-literal=MONGODB_USERNAME='${{ env.MONGODB_USERNAME }}' \
-                    --from-literal=MONGODB_PASSWORD='${{ env.MONGODB_PASSWORD }}' \
-                    --from-literal=JWT_SECRET='${{ secrets.JWT_SECRET }}' \
+      - name: Create/Update Secrets
+        run: |
+          kubectl create secret generic billing-service-secrets \
+            --from-literal=JWT_SECRET='${{ secrets.JWT_SECRET }}' \
             --from-literal=NEW_RELIC_LICENSE_KEY='${{ secrets.NEW_RELIC_LICENSE_KEY }}' \
-                  # Apply all manifests
-                  kubectl apply -k . -n ${{ env.SERVICE_NAME }}
+            --from-literal=AWS_ACCESS_KEY_ID='${{ secrets.AWS_ACCESS_KEY_ID }}' \
+            --from-literal=AWS_SECRET_ACCESS_KEY='${{ secrets.AWS_SECRET_ACCESS_KEY }}' \
+            --namespace=${{ env.SERVICE_NAME }} \
+            --dry-run=client -o yaml | kubectl apply -f -
 
-                  # Update image with correct tag
-                  kubectl set image deployment/billing-service-deployment \
-                    billing-service=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }} \
-                    -n ${{ env.SERVICE_NAME }}
+      - name: Deploy to EKS
+        run: |
+          kubectl apply -f k8s/ -n ${{ env.SERVICE_NAME }}
 
-                  # Force imagePullPolicy to Always
-                  kubectl patch deployment billing-service-deployment -n ${{ env.SERVICE_NAME }} \
-                    -p '{"spec":{"template":{"spec":{"containers":[{"name":"billing-service","imagePullPolicy":"Always"}]}}}}'
+          kubectl set image deployment/oficina-billing-service \
+            oficina-billing-service=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }} \
+            -n ${{ env.SERVICE_NAME }}
 
-            - name: Wait for deployment rollout
-              run: |
-                  kubectl rollout status deployment/billing-service-deployment -n ${{ env.SERVICE_NAME }} --timeout=10m
+          kubectl patch deployment oficina-billing-service -n ${{ env.SERVICE_NAME }} \
+            -p '{"spec":{"template":{"spec":{"containers":[{"name":"oficina-billing-service","imagePullPolicy":"Always"}]}}}}'
 
-            - name: Verify deployment
-              run: |
-                  echo "=== Pods Status ==="
-                  kubectl get pods -n ${{ env.SERVICE_NAME }}
-                  echo ""
-                  echo "=== Services ==="
-                  kubectl get svc -n ${{ env.SERVICE_NAME }}
-                  echo ""
-                  echo "=== HPA Status ==="
-                  kubectl get hpa -n ${{ env.SERVICE_NAME }}
+      - name: Wait for deployment rollout
+        run: |
+          kubectl rollout status deployment/oficina-billing-service -n ${{ env.SERVICE_NAME }} --timeout=10m
 
-            - name: Debug Deployment Failure
-              if: failure()
-              run: |
-                  echo "=========================================="
-                  echo "=== DEPLOYMENT FAILURE DEBUG INFO ==="
-                  echo "=========================================="
-                  kubectl get pods -n ${{ env.SERVICE_NAME }} -o wide
-                  kubectl describe deployment billing-service-deployment -n ${{ env.SERVICE_NAME }}
-                  kubectl logs -l app=billing-service -n ${{ env.SERVICE_NAME }} --tail=200 --all-containers=true || true
-                  kubectl get events -n ${{ env.SERVICE_NAME }} --sort-by='.lastTimestamp' | tail -30
+      - name: Verify deployment
+        run: |
+          echo "=== Pods Status ==="
+          kubectl get pods -n ${{ env.SERVICE_NAME }}
+          echo ""
+          echo "=== Services ==="
+          kubectl get svc -n ${{ env.SERVICE_NAME }}
+          echo ""
+          echo "=== HPA Status ==="
+          kubectl get hpa -n ${{ env.SERVICE_NAME }}
 
-    rollback:
-        name: Rollback on Failure
-        needs: [deploy]
+      - name: Debug Deployment Failure
         if: failure()
-        runs-on: ubuntu-latest
-        steps:
-            - name: Configure AWS Credentials
-              uses: aws-actions/configure-aws-credentials@v4
-              with:
-                  aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-                  aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-                  aws-region: ${{ env.AWS_REGION }}
+        run: |
+          echo "=========================================="
+          echo "=== DEPLOYMENT FAILURE DEBUG INFO ==="
+          echo "=========================================="
+          kubectl get pods -n ${{ env.SERVICE_NAME }} -o wide
+          kubectl describe deployment oficina-billing-service -n ${{ env.SERVICE_NAME }}
+          kubectl logs -l app=oficina-billing-service -n ${{ env.SERVICE_NAME }} --tail=200 --all-containers=true || true
+          kubectl get events -n ${{ env.SERVICE_NAME }} --sort-by='.lastTimestamp' | tail -30
 
-            - name: Configure kubectl
-              run: |
-                  ENVIRONMENT=${{ github.event.inputs.environment || 'dev' }}
-                  CLUSTER=$(aws ssm get-parameter --name "/microservices/$ENVIRONMENT/eks/cluster_name" --query "Parameter.Value" --output text 2>/dev/null || echo "${{ env.EKS_CLUSTER_NAME }}")
-                  aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name $CLUSTER
+  rollback:
+    name: Rollback on Failure
+    needs: [deploy]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
 
-            - name: Rollback deployment
-              run: |
-                  echo "🔄 Rolling back deployment..."
-                  kubectl rollout undo deployment/billing-service-deployment -n ${{ env.SERVICE_NAME }}
-                  kubectl rollout status deployment/billing-service-deployment -n ${{ env.SERVICE_NAME }} --timeout=5m
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
 
-            - name: Verify rollback
-              run: |
-                  echo "✅ Rollback completed"
-                  kubectl get pods -n ${{ env.SERVICE_NAME }}
+      - name: Rollback deployment
+        run: |
+          echo "Rolling back deployment..."
+          kubectl rollout undo deployment/oficina-billing-service -n ${{ env.SERVICE_NAME }}
+          kubectl rollout status deployment/oficina-billing-service -n ${{ env.SERVICE_NAME }} --timeout=5m
+
+      - name: Verify rollback
+        run: |
+          echo "Rollback completed"
+          kubectl get pods -n ${{ env.SERVICE_NAME }}
